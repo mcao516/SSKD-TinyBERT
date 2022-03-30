@@ -719,120 +719,7 @@ def load_evaluation_data(args, processor, tokenizer, output_mode, cluster_map):
     return eval_examples, eval_data, eval_labels, eval_dataloader
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--data_dir",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
-    parser.add_argument("--teacher_model",
-                        default=None,
-                        type=str,
-                        help="The teacher model dir.")
-    parser.add_argument("--student_model",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The student model dir.")
-    parser.add_argument("--task_name",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The name of the task to train.")
-    parser.add_argument("--output_dir",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The output directory where the model predictions and checkpoints will be written.")
-    parser.add_argument("--cache_dir",
-                        default="",
-                        type=str,
-                        help="Where do you want to store the pre-trained models downloaded from s3")
-    parser.add_argument("--max_seq_length",
-                        default=128,
-                        type=int,
-                        help="The maximum total input sequence length after WordPiece tokenization. \n"
-                             "Sequences longer than this will be truncated, and sequences shorter \n"
-                             "than this will be padded.")
-    parser.add_argument("--do_eval",
-                        action='store_true',
-                        help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_lower_case",
-                        action='store_true',
-                        help="Set this flag if you are using an uncased model.")
-    parser.add_argument("--train_batch_size",
-                        default=32,
-                        type=int,
-                        help="Total batch size for training.")
-    parser.add_argument("--eval_batch_size",
-                        default=32,
-                        type=int,
-                        help="Total batch size for eval.")
-    parser.add_argument("--sample_n_example",
-                        default=100,
-                        type=int,
-                        help="Number of examples to sample for similarity distillation.")
-    parser.add_argument("--learning_rate",
-                        default=5e-5,
-                        type=float,
-                        help="The initial learning rate for Adam.")
-    parser.add_argument('--weight_decay', '--wd',
-                        default=1e-4,
-                        type=float,
-                        metavar='W',
-                        help='weight decay')
-    parser.add_argument("--num_train_epochs",
-                        default=3.0,
-                        type=float,
-                        help="Total number of training epochs to perform.")
-    parser.add_argument("--warmup_proportion",
-                        default=0.1,
-                        type=float,
-                        help="Proportion of training to perform linear learning rate warmup for. "
-                             "E.g., 0.1 = 10%% of training.")
-    parser.add_argument("--no_cuda",
-                        action='store_true',
-                        help="Whether not to use CUDA when available")
-    parser.add_argument('--seed',
-                        type=int,
-                        default=42,
-                        help="random seed for initialization")
-    parser.add_argument('--gradient_accumulation_steps',
-                        type=int,
-                        default=1,
-                        help="Number of updates steps to accumulate before performing a backward/update pass.")
-
-    # added arguments
-    parser.add_argument('--aug_train',
-                        action='store_true')
-    parser.add_argument('--eval_step',
-                        type=int,
-                        default=50)
-    parser.add_argument('--k',
-                        type=int,
-                        default=10)
-    parser.add_argument('--pred_distill',
-                        action='store_true')
-    parser.add_argument('--similarity_distill',
-                        action='store_true')
-    parser.add_argument('--data_url',
-                        type=str,
-                        default="")
-    parser.add_argument('--temperature',
-                        type=float,
-                        default=1.)
-    parser.add_argument('--init_student_from_scratch',
-                        action='store_true')
-    parser.add_argument('--cluster_map_path',
-                        type=str,
-                        default=None)           
-    parser.add_argument('--initialize_student_embedding',
-                        action='store_true')
-    parser.add_argument('--only_pretrained_features',
-                        action='store_true')
-    
-    args = parser.parse_args()
+def main(args):
     logger.info('The args: {}'.format(args))
 
     processors = {
@@ -1055,21 +942,12 @@ def main():
                 # teacher_logits, student_logits: [batch_size, label_num]
                 # student_pooled, teacher_pooled: [batch_size, hidden_size]
 
-                if args.only_pretrained_features:
-                    _, _, student_pretrained_pooled = student_model(
-                        input_ids, segment_ids, input_mask, only_pretrained_features=True)
+                student_logits, student_atts, student_reps, _ = student_model(
+                    input_ids, segment_ids, input_mask, is_student=True)
 
-                    with torch.no_grad():
-                        _, _, teacher_pretrained_pooled = teacher_model(
-                            input_ids, segment_ids, input_mask, only_pretrained_features=True)
-
-                else:
-                    student_logits, student_atts, student_reps, _ = student_model(
-                        input_ids, segment_ids, input_mask, is_student=True)
-
-                    with torch.no_grad():
-                        teacher_logits, teacher_atts, teacher_reps, _ = teacher_model(
-                            input_ids, segment_ids, input_mask)
+                with torch.no_grad():
+                    teacher_logits, teacher_atts, teacher_reps, _ = teacher_model(
+                        input_ids, segment_ids, input_mask)
 
                 if args.pred_distill:
                     if output_mode == "classification":
@@ -1086,32 +964,12 @@ def main():
                         train_data, args.sample_n_example
                     )
 
-                    if args.only_pretrained_features:
-                        with torch.no_grad():
-                            _, _, sampled_pretrained_pooled = teacher_model(
-                                sampled_ids,
-                                sampled_seg,
-                                sampled_mask,
-                                only_pretrained_features=True
-                            )
-                        
-                        loss = seed_loss(teacher_pretrained_pooled,
-                                         student_pretrained_pooled,
-                                         sampled_pretrained_pooled,
-                                         temperature=1.0,
-                                         lambda_a=1.0,
-                                         lambda_c=1.0)
-                    else:
-                        with torch.no_grad():
-                            sampled_logits, _, _, sampled_pooled = teacher_model(
-                                sampled_ids, sampled_seg, sampled_mask)
+                    with torch.no_grad():
+                        sampled_logits, _, _, sampled_pooled = teacher_model(
+                            sampled_ids, sampled_seg, sampled_mask)
 
-                        loss = seed_loss(teacher_logits,
-                                         student_logits,
-                                         sampled_logits,
-                                         temperature=1.0,
-                                         lambda_a=1.0,
-                                         lambda_c=1.0)
+                    loss = seed_loss(teacher_logits, student_logits, sampled_logits,
+                                     temperature=1.0, lambda_a=1.0, lambda_c=1.0)
                 else:
                     # intermediate layer distillation
                     att_loss, rep_loss = 0.0, 0.0
@@ -1205,5 +1063,118 @@ def main():
 
                     student_model.train()
 
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--data_dir",
+                        default=None,
+                        type=str,
+                        required=True,
+                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
+    parser.add_argument("--teacher_model",
+                        default=None,
+                        type=str,
+                        help="The teacher model dir.")
+    parser.add_argument("--student_model",
+                        default=None,
+                        type=str,
+                        required=True,
+                        help="The student model dir.")
+    parser.add_argument("--task_name",
+                        default=None,
+                        type=str,
+                        required=True,
+                        help="The name of the task to train.")
+    parser.add_argument("--output_dir",
+                        default=None,
+                        type=str,
+                        required=True,
+                        help="The output directory where the model predictions and checkpoints will be written.")
+    parser.add_argument("--cache_dir",
+                        default="",
+                        type=str,
+                        help="Where do you want to store the pre-trained models downloaded from s3")
+    parser.add_argument("--max_seq_length",
+                        default=128,
+                        type=int,
+                        help="The maximum total input sequence length after WordPiece tokenization. \n"
+                             "Sequences longer than this will be truncated, and sequences shorter \n"
+                             "than this will be padded.")
+    parser.add_argument("--do_eval",
+                        action='store_true',
+                        help="Whether to run eval on the dev set.")
+    parser.add_argument("--do_lower_case",
+                        action='store_true',
+                        help="Set this flag if you are using an uncased model.")
+    parser.add_argument("--train_batch_size",
+                        default=32,
+                        type=int,
+                        help="Total batch size for training.")
+    parser.add_argument("--eval_batch_size",
+                        default=32,
+                        type=int,
+                        help="Total batch size for eval.")
+    parser.add_argument("--sample_n_example",
+                        default=100,
+                        type=int,
+                        help="Number of examples to sample for similarity distillation.")
+    parser.add_argument("--learning_rate",
+                        default=5e-5,
+                        type=float,
+                        help="The initial learning rate for Adam.")
+    parser.add_argument('--weight_decay', '--wd',
+                        default=1e-4,
+                        type=float,
+                        metavar='W',
+                        help='weight decay')
+    parser.add_argument("--num_train_epochs",
+                        default=3.0,
+                        type=float,
+                        help="Total number of training epochs to perform.")
+    parser.add_argument("--warmup_proportion",
+                        default=0.1,
+                        type=float,
+                        help="Proportion of training to perform linear learning rate warmup for. "
+                             "E.g., 0.1 = 10%% of training.")
+    parser.add_argument("--no_cuda",
+                        action='store_true',
+                        help="Whether not to use CUDA when available")
+    parser.add_argument('--seed',
+                        type=int,
+                        default=42,
+                        help="random seed for initialization")
+    parser.add_argument('--gradient_accumulation_steps',
+                        type=int,
+                        default=1,
+                        help="Number of updates steps to accumulate before performing a backward/update pass.")
+
+    # added arguments
+    parser.add_argument('--aug_train',
+                        action='store_true')
+    parser.add_argument('--eval_step',
+                        type=int,
+                        default=50)
+    parser.add_argument('--k',
+                        type=int,
+                        default=10)
+    parser.add_argument('--pred_distill',
+                        action='store_true')
+    parser.add_argument('--similarity_distill',
+                        action='store_true')
+    parser.add_argument('--data_url',
+                        type=str,
+                        default="")
+    parser.add_argument('--temperature',
+                        type=float,
+                        default=1.)
+    parser.add_argument('--init_student_from_scratch',
+                        action='store_true')
+    parser.add_argument('--cluster_map_path',
+                        type=str,
+                        default=None)           
+    parser.add_argument('--initialize_student_embedding',
+                        action='store_true')
+
+    args = parser.parse_args()
+    main(args)
