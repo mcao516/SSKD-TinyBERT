@@ -1,4 +1,4 @@
-TinyBERT
+Self-supervised Knowledge Distillation with TinyBERT
 ======== 
 TinyBERT is 7.5x smaller and 9.4x faster on inference than BERT-base and achieves competitive performances in the tasks of natural language understanding. It performs a novel transformer distillation at both the pre-training and task-specific learning stages. The overview of TinyBERT learning is illustrated as follows: 
 <br />
@@ -162,4 +162,3 @@ To Dos
 * Evaluate TinyBERT on Chinese tasks.
 * Tiny*: use NEZHA or ALBERT as the teacher in TinyBERT learning.
 * Release better general TinyBERTs.
-# SSKD-TinyBERT
