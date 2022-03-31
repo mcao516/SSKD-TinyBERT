@@ -2,6 +2,7 @@
 general_distill_corpus/
 *.log
 .vscode/
+general_distill_corpus/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

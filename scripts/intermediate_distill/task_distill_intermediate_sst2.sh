@@ -10,8 +10,6 @@ TMP_TINYBERT_DIR=$SCRATCH/TinyBERT_TEST/${TASK_NAME}/intermediate-${CLUSTER_NUM}
 
 mkdir $TMP_TINYBERT_DIR
     # --aug_train \
-    # 
-    # --only_pretrained_features \
     # --similarity_distill \
     # --sample_n_example 128 \
 python $HOME/Pretrained-Language-Model/TinyBERT/task_distill.py \
